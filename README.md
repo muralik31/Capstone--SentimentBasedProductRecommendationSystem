@@ -1,3 +1,12 @@
+---
+title: Ebuss Product Recommender
+emoji: 🛒
+colorFrom: indigo
+colorTo: purple
+sdk: docker
+app_port: 7860
+---
+
 #  Sentiment-Based Product Recommendation System
 
 ## Ebuss E-Commerce Platform
@@ -8,7 +17,7 @@ An intelligent product recommendation system that combines **collaborative filte
 
 ##  Deployment Link
 
-**http://localhost:5000** (Local Development)
+**[Live Demo on Hugging Face Spaces](https://huggingface.co/spaces/YOUR_USERNAME/ebuss-recommender)**
 
 ---
 

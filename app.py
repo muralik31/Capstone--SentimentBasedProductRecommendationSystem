@@ -189,8 +189,8 @@ with app.app_context():
 
 
 if __name__ == '__main__':
-    # Get port from environment variable (for Heroku) or use 5000
-    port = int(os.environ.get('PORT', 5000))
+    # Get port from environment variable (7860 for HF Spaces, 5000 default)
+    port = int(os.environ.get('PORT', 7860))
     
     # Run the app
     app.run(host='0.0.0.0', port=port, debug=False)
