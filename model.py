@@ -72,6 +72,31 @@ class SentimentRecommender:
         Args:
             model_path (str): Path to the models directory
         """
+        import os
+        
+        # Check if models directory exists
+        if not os.path.exists(model_path):
+            print(f" ERROR: Models directory '{model_path}' does not exist!")
+            return False
+        
+        # List files and check for LFS pointers
+        print(f" Checking model files in '{model_path}':")
+        for f in os.listdir(model_path):
+            filepath = os.path.join(model_path, f)
+            size = os.path.getsize(filepath)
+            # Check if it's a Git LFS pointer
+            if size < 200:
+                try:
+                    with open(filepath, 'r') as file:
+                        content = file.read(50)
+                        if content.startswith('version https://git-lfs'):
+                            print(f"   WARNING: {f} is a Git LFS pointer (not actual file)!")
+                            print(f"   Run 'git lfs pull' to download actual files.")
+                            return False
+                except:
+                    pass
+            print(f"   {f}: {size / (1024*1024):.2f} MB")
+        
         try:
             # Load sentiment model
             self.sentiment_model = joblib.load(f'{model_path}sentiment_model.pkl')
@@ -110,6 +135,8 @@ class SentimentRecommender:
             
         except Exception as e:
             print(f" Error loading models: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def preprocess_text(self, text):

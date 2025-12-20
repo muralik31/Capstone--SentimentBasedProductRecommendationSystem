@@ -136,9 +136,34 @@ def get_users():
 @app.route('/api/health')
 def health_check():
     """Health check endpoint."""
+    import os
+    models_dir = 'models/'
+    model_files = {}
+    
+    if os.path.exists(models_dir):
+        for f in os.listdir(models_dir):
+            filepath = os.path.join(models_dir, f)
+            size = os.path.getsize(filepath)
+            # Check if it's a Git LFS pointer (small file with specific content)
+            is_lfs_pointer = False
+            if size < 200:
+                try:
+                    with open(filepath, 'r') as file:
+                        content = file.read(50)
+                        is_lfs_pointer = content.startswith('version https://git-lfs')
+                except:
+                    pass
+            model_files[f] = {
+                'size_bytes': size,
+                'size_mb': round(size / (1024*1024), 2),
+                'is_lfs_pointer': is_lfs_pointer
+            }
+    
     return jsonify({
         'status': 'healthy' if models_loaded else 'unhealthy',
-        'models_loaded': models_loaded
+        'models_loaded': models_loaded,
+        'models_directory_exists': os.path.exists(models_dir),
+        'model_files': model_files
     })
 
 
