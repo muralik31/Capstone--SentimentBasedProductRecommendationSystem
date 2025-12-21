@@ -1,493 +1,220 @@
-"""
-Sentiment-Based Product Recommendation System
-Model Module
-
-This module contains:
-1. Text preprocessing functions
-2. Sentiment analysis model integration
-3. User-based collaborative filtering recommendation system
-4. Sentiment-filtered recommendation function
-
-Author: Machine Learning Engineer, Ebuss
-Date: December 2024
-"""
+# model.py - Sentiment + Recommendation Engine
+# Quick implementation for Ebuss capstone project
 
 import pandas as pd
 import numpy as np
 import re
 import joblib
 import pickle
+import os
 import nltk
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from nltk.stem import WordNetLemmatizer
 import contractions
-from sklearn.metrics.pairwise import cosine_similarity
 
-
-# Download required NLTK data
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt')
-
-try:
-    nltk.data.find('corpora/stopwords')
-except LookupError:
-    nltk.download('stopwords')
-
-try:
-    nltk.data.find('corpora/wordnet')
-except LookupError:
-    nltk.download('wordnet')
-
-try:
-    nltk.download('punkt_tab', quiet=True)
-except:
-    pass
+# download nltk stuff if not present
+for resource in ['punkt', 'stopwords', 'wordnet', 'punkt_tab']:
+    try:
+        nltk.data.find(f'tokenizers/{resource}' if resource == 'punkt' else f'corpora/{resource}')
+    except:
+        nltk.download(resource, quiet=True)
 
 
 class SentimentRecommender:
-    """
-    A class that combines sentiment analysis with collaborative filtering
-    to provide sentiment-aware product recommendations.
-    """
+    """Main recommender class - combines CF with sentiment analysis"""
     
     def __init__(self):
-        """Initialize the recommender system by loading pre-trained models."""
         self.sentiment_model = None
-        self.tfidf_vectorizer = None
+        self.tfidf = None
         self.user_item_matrix = None
-        self.user_similarity = None
-        self.item_similarity = None
-        self.cleaned_data = None
-        self.valid_users = None
-        self.stop_words = set(stopwords.words('english'))
+        self.user_sim = None
+        self.item_sim = None
+        self.data = None
+        self.users = None
+        self.stopwords = set(stopwords.words('english'))
         self.lemmatizer = WordNetLemmatizer()
         
-    def load_models(self, model_path='models/'):
-        """
-        Load all pre-trained models and data from the specified path.
-        
-        Args:
-            model_path (str): Path to the models directory
-        """
-        import os
-        
-        # Check if models directory exists
-        if not os.path.exists(model_path):
-            print(f" ERROR: Models directory '{model_path}' does not exist!")
+    def load_models(self, path='models/'):
+        """Load all the pickled models"""
+        if not os.path.exists(path):
+            print(f"ERROR: {path} doesn't exist!")
             return False
         
-        # List files and check for LFS pointers
-        print(f" Checking model files in '{model_path}':")
-        for f in os.listdir(model_path):
-            filepath = os.path.join(model_path, f)
-            size = os.path.getsize(filepath)
-            # Check if it's a Git LFS pointer
-            if size < 200:
+        # quick check for LFS pointer files (they're tiny)
+        print(f"Loading models from {path}...")
+        for f in os.listdir(path):
+            fpath = os.path.join(path, f)
+            sz = os.path.getsize(fpath)
+            if sz < 200:  # LFS pointers are small text files
                 try:
-                    with open(filepath, 'r') as file:
-                        content = file.read(50)
-                        if content.startswith('version https://git-lfs'):
-                            print(f"   WARNING: {f} is a Git LFS pointer (not actual file)!")
-                            print(f"   Run 'git lfs pull' to download actual files.")
+                    with open(fpath, 'r') as fp:
+                        if fp.read(30).startswith('version https://git-lfs'):
+                            print(f"WARNING: {f} is LFS pointer! Run git lfs pull")
                             return False
-                except:
-                    pass
-            print(f"   {f}: {size / (1024*1024):.2f} MB")
+                except: pass
+            print(f"  {f}: {sz/(1024*1024):.1f}MB")
         
         try:
-            # Load sentiment model
-            self.sentiment_model = joblib.load(f'{model_path}sentiment_model.pkl')
-            print(" Sentiment model loaded")
+            self.sentiment_model = joblib.load(path + 'sentiment_model.pkl')
+            self.tfidf = joblib.load(path + 'tfidf_vectorizer.pkl')
+            self.user_item_matrix = pd.read_pickle(path + 'user_item_matrix.pkl')
+            self.user_sim = pd.read_pickle(path + 'user_similarity.pkl')
+            self.item_sim = pd.read_pickle(path + 'item_similarity.pkl')
+            self.data = pd.read_pickle(path + 'cleaned_data.pkl')
+            with open(path + 'valid_users.pkl', 'rb') as f:
+                self.users = pickle.load(f)
             
-            # Load TF-IDF vectorizer
-            self.tfidf_vectorizer = joblib.load(f'{model_path}tfidf_vectorizer.pkl')
-            print(" TF-IDF vectorizer loaded")
-            
-            # Load user-item matrix
-            self.user_item_matrix = pd.read_pickle(f'{model_path}user_item_matrix.pkl')
-            print(" User-Item matrix loaded")
-            
-            # Load user similarity matrix
-            self.user_similarity = pd.read_pickle(f'{model_path}user_similarity.pkl')
-            print(" User similarity matrix loaded")
-            
-            # Load item similarity matrix (for backup)
-            self.item_similarity = pd.read_pickle(f'{model_path}item_similarity.pkl')
-            print(" Item similarity matrix loaded")
-            
-            # Load cleaned data
-            self.cleaned_data = pd.read_pickle(f'{model_path}cleaned_data.pkl')
-            print(" Cleaned data loaded")
-            
-            # Load valid users list
-            with open(f'{model_path}valid_users.pkl', 'rb') as f:
-                self.valid_users = pickle.load(f)
-            print(" Valid users list loaded")
-            
-            print(f"\n System Stats:")
-            print(f"   - Total Users: {len(self.valid_users)}")
-            print(f"   - Total Products: {self.user_item_matrix.shape[1]}")
-            
+            print(f"Loaded! {len(self.users)} users, {self.user_item_matrix.shape[1]} products")
             return True
-            
         except Exception as e:
-            print(f" Error loading models: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            print(f"Error loading: {e}")
+            import traceback; traceback.print_exc()
             return False
     
-    def preprocess_text(self, text):
-        """
-        Preprocess text for sentiment analysis.
+    def preprocess(self, text):
+        """Clean text for sentiment analysis"""
+        if pd.isna(text): return ""
         
-        Args:
-            text (str): Raw text to preprocess
-            
-        Returns:
-            str: Preprocessed text
-        """
-        if pd.isna(text) or text is None:
-            return ""
-        
-        # Convert to string and lowercase
         text = str(text).lower()
+        try: text = contractions.fix(text)
+        except: pass
         
-        # Expand contractions
-        try:
-            text = contractions.fix(text)
-        except:
-            pass
-        
-        # Remove URLs
-        text = re.sub(r'http\S+|www\S+|https\S+', '', text, flags=re.MULTILINE)
-        
-        # Remove HTML tags
+        # remove urls, html, special chars
+        text = re.sub(r'http\S+|www\S+', '', text)
         text = re.sub(r'<.*?>', '', text)
-        
-        # Remove special characters and numbers
         text = re.sub(r'[^a-zA-Z\s]', '', text)
-        
-        # Remove extra whitespace
         text = ' '.join(text.split())
         
-        # Tokenization
-        try:
-            tokens = word_tokenize(text)
-        except:
-            tokens = text.split()
+        # tokenize & lemmatize
+        try: tokens = word_tokenize(text)
+        except: tokens = text.split()
         
-        # Remove stopwords and lemmatize
-        tokens = [self.lemmatizer.lemmatize(token) 
-                  for token in tokens 
-                  if token not in self.stop_words and len(token) > 2]
-        
+        tokens = [self.lemmatizer.lemmatize(t) for t in tokens 
+                  if t not in self.stopwords and len(t) > 2]
         return ' '.join(tokens)
     
     def predict_sentiment(self, texts):
-        """
-        Predict sentiment for given texts.
-        
-        Args:
-            texts (list): List of texts to analyze
-            
-        Returns:
-            np.array: Array of sentiment probabilities (positive)
-        """
-        if self.sentiment_model is None or self.tfidf_vectorizer is None:
-            raise ValueError("Models not loaded. Call load_models() first.")
-        
-        # Preprocess texts
-        processed_texts = [self.preprocess_text(text) for text in texts]
-        
-        # Transform using TF-IDF
-        features = self.tfidf_vectorizer.transform(processed_texts)
-        
-        # Predict probabilities
-        probabilities = self.sentiment_model.predict_proba(features)[:, 1]
-        
-        return probabilities
+        """Get sentiment probabilities for list of texts"""
+        if not self.sentiment_model:
+            raise ValueError("Models not loaded!")
+        processed = [self.preprocess(t) for t in texts]
+        features = self.tfidf.transform(processed)
+        return self.sentiment_model.predict_proba(features)[:, 1]
     
-    def get_user_based_recommendations(self, username, n_recommendations=20):
-        """
-        Get product recommendations using user-based collaborative filtering.
-
-        Args:
-            username (str): Username to get recommendations for
-            n_recommendations (int): Number of recommendations to return
-
-        Returns:
-            list: List of recommended product names
-        """
-        if self.user_item_matrix is None or self.user_similarity is None:
-            raise ValueError("Models not loaded. Call load_models() first.")
-
-        if username not in self.user_item_matrix.index:
+    def get_user_recommendations(self, user, n=20):
+        """User-based collaborative filtering"""
+        if self.user_item_matrix is None or user not in self.user_item_matrix.index:
             return []
+        
+        sim_users = self.user_sim[user].drop(user).sort_values(ascending=False)
+        user_rated = self.user_item_matrix.loc[user]
+        already_rated = user_rated[user_rated > 0].index.tolist()
+        
+        recs = {}
+        for prod in self.user_item_matrix.columns:
+            if prod in already_rated: continue
+            
+            prod_ratings = self.user_item_matrix[prod]
+            rated = prod_ratings[prod_ratings > 0]
+            if len(rated) == 0: continue
+            
+            sims = sim_users.reindex(rated.index).fillna(0)
+            if sims.sum() > 0:
+                recs[prod] = (rated * sims).sum() / sims.sum()
+        
+        sorted_recs = sorted(recs.items(), key=lambda x: x[1], reverse=True)
+        return [p for p, _ in sorted_recs[:n]]
 
-        # Get similar users
-        similar_users = self.user_similarity[username].drop(username).sort_values(ascending=False)
-
-        # Get products the user has already rated
-        user_rated = self.user_item_matrix.loc[username]
-        rated_products = user_rated[user_rated > 0].index.tolist()
-
-        # Calculate weighted average of similar users' ratings
-        recommendations = {}
-
-        for product in self.user_item_matrix.columns:
-            if product in rated_products:
-                continue
-
-            # Get ratings from similar users who rated this product
-            product_ratings = self.user_item_matrix[product]
-            rated_by_similar = product_ratings[product_ratings > 0]
-
-            if len(rated_by_similar) == 0:
-                continue
-
-            # Calculate weighted average
-            similarities = similar_users.reindex(rated_by_similar.index).fillna(0)
-            if similarities.sum() > 0:
-                weighted_avg = (rated_by_similar * similarities).sum() / similarities.sum()
-                recommendations[product] = weighted_avg
-
-        # Sort and return top N
-        sorted_recs = sorted(recommendations.items(), key=lambda x: x[1], reverse=True)
-        return [product for product, score in sorted_recs[:n_recommendations]]
-
-    def get_item_based_recommendations(self, username, n_recommendations=20, k=10):
-        """
-        Get product recommendations using item-based collaborative filtering.
-
-        This approach:
-        1. Finds products the user has already rated
-        2. For each unrated product, finds K most similar rated products
-        3. Predicts rating as weighted average of similar products' ratings
-
-        Args:
-            username (str): Username to get recommendations for
-            n_recommendations (int): Number of recommendations to return
-            k (int): Number of similar items to consider for prediction
-
-        Returns:
-            list: List of recommended product names sorted by predicted rating
-        """
-        if self.user_item_matrix is None or self.item_similarity is None:
-            raise ValueError("Models not loaded. Call load_models() first.")
-
-        if username not in self.user_item_matrix.index:
+    def get_item_recommendations(self, user, n=20, k=10):
+        """Item-based collaborative filtering"""
+        if self.user_item_matrix is None or user not in self.user_item_matrix.index:
             return []
-
-        # Get products the user has already rated
-        user_rated = self.user_item_matrix.loc[username]
-        rated_products = user_rated[user_rated > 0]
-        unrated_products = self.user_item_matrix.columns[user_rated == 0]
-
-        if len(rated_products) == 0:
-            return []
-
-        # Calculate predicted ratings for unrated products
-        recommendations = {}
-
-        for product in unrated_products:
-            # Get similarities between this product and all rated products
-            similarities = []
-            ratings = []
-
-            for rated_product, rating in rated_products.items():
-                # Get similarity score
-                if product in self.item_similarity.columns and rated_product in self.item_similarity.index:
-                    sim = self.item_similarity.loc[rated_product, product]
-                    if sim > 0:  # Only consider positive similarities
-                        similarities.append(sim)
+        
+        user_rated = self.user_item_matrix.loc[user]
+        rated_prods = user_rated[user_rated > 0]
+        unrated = self.user_item_matrix.columns[user_rated == 0]
+        
+        if len(rated_prods) == 0: return []
+        
+        recs = {}
+        for prod in unrated:
+            sims, ratings = [], []
+            for rated_p, rating in rated_prods.items():
+                if prod in self.item_sim.columns and rated_p in self.item_sim.index:
+                    s = self.item_sim.loc[rated_p, prod]
+                    if s > 0:
+                        sims.append(s)
                         ratings.append(rating)
-
-            if len(similarities) == 0:
-                continue
-
-            # Take top K most similar products
-            if len(similarities) > k:
-                top_k_idx = np.argsort(similarities)[-k:]
-                similarities = [similarities[i] for i in top_k_idx]
-                ratings = [ratings[i] for i in top_k_idx]
-
-            # Calculate weighted average rating
-            if sum(similarities) > 0:
-                predicted_rating = np.average(ratings, weights=similarities)
-                recommendations[product] = predicted_rating
-
-        # Sort by predicted rating and return top N
-        sorted_recs = sorted(recommendations.items(), key=lambda x: x[1], reverse=True)
-        return [product for product, score in sorted_recs[:n_recommendations]]
+            
+            if not sims: continue
+            
+            # take top k similar
+            if len(sims) > k:
+                idx = np.argsort(sims)[-k:]
+                sims = [sims[i] for i in idx]
+                ratings = [ratings[i] for i in idx]
+            
+            if sum(sims) > 0:
+                recs[prod] = np.average(ratings, weights=sims)
+        
+        sorted_recs = sorted(recs.items(), key=lambda x: x[1], reverse=True)
+        return [p for p, _ in sorted_recs[:n]]
     
-    def get_sentiment_filtered_recommendations(self, username, n_initial=20, n_final=5, use_item_based=True):
-        """
-        Get top N recommendations filtered by sentiment analysis.
-
-        This method:
-        1. Gets 20 recommendations from collaborative filtering
-        2. Analyzes sentiment of reviews for each recommended product
-        3. Returns top 5 products with best sentiment scores
-
-        Args:
-            username (str): Username to get recommendations for
-            n_initial (int): Number of initial recommendations from CF
-            n_final (int): Number of final recommendations after sentiment filtering
-            use_item_based (bool): If True, use item-based CF; if False, use user-based CF
-
-        Returns:
-            list: List of dictionaries containing product info and sentiment scores
-        """
-        if self.cleaned_data is None:
-            raise ValueError("Models not loaded. Call load_models() first.")
-
-        # Check if user exists
-        if username not in self.valid_users:
+    def get_sentiment_recommendations(self, user, n_cf=20, n_final=5, use_item=True):
+        """Get recommendations filtered by sentiment - the main function"""
+        if self.data is None or user not in self.users:
             return None
-
-        # Get initial recommendations from collaborative filtering
-        if use_item_based:
-            initial_recommendations = self.get_item_based_recommendations(username, n_initial)
+        
+        # get CF recommendations first
+        if use_item:
+            cf_recs = self.get_item_recommendations(user, n_cf)
         else:
-            initial_recommendations = self.get_user_based_recommendations(username, n_initial)
+            cf_recs = self.get_user_recommendations(user, n_cf)
         
-        if len(initial_recommendations) == 0:
-            return []
+        if not cf_recs: return []
         
-        # Calculate sentiment scores for each recommended product
-        product_sentiments = []
-        
-        for product in initial_recommendations:
-            # Get reviews for this product
-            product_reviews = self.cleaned_data[
-                self.cleaned_data['name'] == product
-            ]['reviews_text'].tolist()
+        # now filter by sentiment
+        results = []
+        for prod in cf_recs:
+            reviews = self.data[self.data['name'] == prod]['reviews_text'].tolist()
+            if not reviews: continue
             
-            if len(product_reviews) == 0:
-                continue
+            probs = self.predict_sentiment(reviews)
+            avg_sent = np.mean(probs)
+            pos_ratio = np.mean(probs > 0.5)
+            avg_rating = self.data[self.data['name'] == prod]['reviews_rating'].mean()
             
-            # Predict sentiment probabilities
-            sentiment_probs = self.predict_sentiment(product_reviews)
-            
-            # Calculate metrics
-            avg_sentiment = np.mean(sentiment_probs)
-            positive_ratio = np.mean(sentiment_probs > 0.5)
-            
-            # Get average rating for this product
-            avg_rating = self.cleaned_data[
-                self.cleaned_data['name'] == product
-            ]['reviews_rating'].mean()
-            
-            product_sentiments.append({
-                'product': product,
-                'sentiment_score': avg_sentiment,
-                'positive_ratio': positive_ratio,
+            results.append({
+                'product': prod,
+                'sentiment_score': avg_sent,
+                'positive_ratio': pos_ratio,
                 'avg_rating': avg_rating,
-                'num_reviews': len(product_reviews)
+                'num_reviews': len(reviews)
             })
         
-        # Sort by sentiment score and return top N
-        sorted_products = sorted(
-            product_sentiments, 
-            key=lambda x: x['sentiment_score'], 
-            reverse=True
-        )
-        
-        return sorted_products[:n_final]
+        # sort by sentiment and return top n
+        results.sort(key=lambda x: x['sentiment_score'], reverse=True)
+        return results[:n_final]
     
-    def is_valid_user(self, username):
-        """
-        Check if a username exists in the system.
-        
-        Args:
-            username (str): Username to check
-            
-        Returns:
-            bool: True if user exists, False otherwise
-        """
-        if self.valid_users is None:
-            return False
-        return username in self.valid_users
-    
-    def get_all_users(self):
-        """
-        Get list of all valid users in the system.
-        
-        Returns:
-            list: List of valid usernames
-        """
-        return self.valid_users if self.valid_users else []
+    def is_valid_user(self, user):
+        return self.users and user in self.users
     
     def get_sample_users(self, n=10):
-        """
-        Get a sample of valid users for display/testing.
-        
-        Args:
-            n (int): Number of sample users to return
-            
-        Returns:
-            list: List of sample usernames
-        """
-        if self.valid_users is None:
-            return []
-        return self.valid_users[:n]
+        return self.users[:n] if self.users else []
 
 
-# Singleton instance for the Flask app
+# global instance for flask
 recommender = SentimentRecommender()
 
+def initialize_models(path='models/'):
+    return recommender.load_models(path)
 
-def initialize_models(model_path='models/'):
-    """
-    Initialize the recommender system with pre-trained models.
-    
-    Args:
-        model_path (str): Path to the models directory
-        
-    Returns:
-        bool: True if successful, False otherwise
-    """
-    return recommender.load_models(model_path)
+def get_recommendations(user):
+    return recommender.get_sentiment_recommendations(user)
 
-
-def get_recommendations(username):
-    """
-    Get sentiment-filtered recommendations for a user.
-    
-    Args:
-        username (str): Username to get recommendations for
-        
-    Returns:
-        list or None: List of recommendations or None if user not found
-    """
-    return recommender.get_sentiment_filtered_recommendations(username)
-
-
-def check_user(username):
-    """
-    Check if a user exists in the system.
-    
-    Args:
-        username (str): Username to check
-        
-    Returns:
-        bool: True if user exists
-    """
-    return recommender.is_valid_user(username)
-
+def check_user(user):
+    return recommender.is_valid_user(user)
 
 def get_sample_users(n=10):
-    """
-    Get sample users for display.
-    
-    Args:
-        n (int): Number of users to return
-        
-    Returns:
-        list: List of usernames
-    """
     return recommender.get_sample_users(n)
-
