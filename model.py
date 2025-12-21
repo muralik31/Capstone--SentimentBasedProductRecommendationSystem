@@ -161,12 +161,12 @@ class SentimentRecommender:
         sorted_recs = sorted(recs.items(), key=lambda x: x[1], reverse=True)
         return [p for p, _ in sorted_recs[:n]]
     
-    def get_sentiment_recommendations(self, user, n_cf=20, n_final=5, use_item=True):
+    def get_sentiment_recommendations(self, user, n_cf=20, n_final=5, use_item=False):
         """Get recommendations filtered by sentiment - the main function"""
         if self.data is None or user not in self.users:
             return None
         
-        # get CF recommendations first
+        # get CF recommendations first (user-based selected as best in notebook)
         if use_item:
             cf_recs = self.get_item_recommendations(user, n_cf)
         else:
