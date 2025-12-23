@@ -165,8 +165,5 @@ Went with Random Forest - solid performance and actually fits in memory.
 ## Author
 
 Murali Kondapally  
-ML Engineering Capstone Project
 
 ---
-
-*Built as a learning project. The "Challenges" section above is the real documentation - that's where the learning happened.*
