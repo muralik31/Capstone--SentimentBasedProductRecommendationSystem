@@ -40,7 +40,7 @@ class SentimentRecommender:
             print(f"ERROR: {path} doesn't exist!")
             return False
         
-        # Check for LFS pointer files (caused issues on Render)
+        # Check for LFS pointer files 
         print(f"Loading models from {path}...")
         for f in os.listdir(path):
             fpath = os.path.join(path, f)
