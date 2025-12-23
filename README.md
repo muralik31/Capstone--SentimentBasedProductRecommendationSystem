@@ -13,7 +13,7 @@ app_port: 7860
 
 A hybrid recommendation system that combines collaborative filtering with sentiment analysis. The idea is simple: don't just recommend what similar users bought - recommend what they actually *liked*.
 
-**Live Demo:** https://sentimentbasedproductrecommendationsystem.onrender.com
+**Live Demo:** https://huggingface.co/spaces/muralikondapally/SentimentBasedProductRecommendationSystem
 
 ---
 
