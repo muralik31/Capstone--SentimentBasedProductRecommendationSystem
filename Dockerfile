@@ -21,3 +21,4 @@ EXPOSE 7860
 # Run the app
 CMD ["gunicorn", "--bind", "0.0.0.0:7860", "app:app"]
 
+
