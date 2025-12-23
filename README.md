@@ -11,198 +11,154 @@ app_port: 7860
 
 ## Ebuss E-Commerce Platform
 
-An intelligent product recommendation system that combines **collaborative filtering** with **sentiment analysis** to provide personalized and sentiment-aware product recommendations.
+A hybrid recommendation system that combines collaborative filtering with sentiment analysis. The idea is simple: don't just recommend what similar users bought - recommend what they actually *liked*.
+
+**Live Demo:** https://sentimentbasedproductrecommendationsystem.onrender.com
 
 ---
 
-## Deployment Link
+## What This Project Does
 
-**[Live Demo on Hugging Face Spaces](https://huggingface.co/spaces/muralikondapally/SentimentBasedProductRecommendationSystem)**
+Most recommendation systems just look at purchase patterns. But a product might be selling well while having terrible reviews. This system fixes that by:
 
----
+1. Finding products similar users liked (User-Based Collaborative Filtering)
+2. Analyzing all reviews for those products (Sentiment Analysis with Random Forest)
+3. Only recommending products with genuinely positive sentiment
 
-## Project Overview
-
-This project builds a complete end-to-end ML pipeline for e-commerce product recommendations:
-
-1. **Sentiment Analysis** - Classifies product reviews as positive/negative using ML
-2. **Collaborative Filtering** - Recommends products based on user behavior patterns
-3. **Hybrid Recommendations** - Filters CF results through sentiment scores for better quality
+Enter a username → get 5 products that similar users loved AND have good reviews.
 
 ---
 
-## Challenges Encountered
+## The Tech Stack
 
-Building this project wasn't straightforward - here are some real issues I ran into:
+- **Python 3.11** - because 3.13 broke some dependencies
+- **Random Forest** - for sentiment classification (tried XGBoost but it was too big)
+- **TF-IDF** - converting review text to features (5000 features, unigrams + bigrams)
+- **User-Based CF** - better than item-based for our sparse matrix
+- **Flask** - simple and gets the job done
+- **Docker** - for deployment on Hugging Face Spaces
 
-### 1. Class Imbalance Was Severe (~9:1 ratio)
+---
 
-The dataset had way more positive reviews than negative ones. My initial Logistic Regression model just predicted "Positive" for everything and still got 90% accuracy - completely useless for actually identifying negative sentiment.
+## Challenges I Ran Into
 
-**Solution:** Used SMOTE (Synthetic Minority Over-sampling) to balance the training data. F1-score jumped from 0.88 to 0.93 after this fix.
+### Class Imbalance (9:1 ratio)
 
-### 2. XGBoost Model Too Large for Deployment
+90% of reviews are positive. My first model just predicted "Positive" for everything and got 90% accuracy. Useless.
 
-I initially picked XGBoost as the best model (slightly better F1-score), but the serialized model was ~200MB. Render's free tier only has 512MB RAM, so the app kept crashing on startup.
+**Fix:** SMOTE to balance the training data. F1 went from 0.88 to 0.93.
 
-**Solution:** Switched to Random Forest which gave similar performance (~0.92 F1) but with a smaller memory footprint. Still had to use Git LFS for model files.
+### XGBoost Was Too Big
 
-### 3. NLTK Downloads Failing on Cloud Platforms
+XGBoost had slightly better metrics but the model was ~200MB. Render's free tier has 512MB RAM total. App kept crashing.
 
-The NLTK data downloads (`punkt`, `stopwords`, `wordnet`) worked fine locally but silently failed on Render and Hugging Face Spaces during container startup.
+**Fix:** Switched to Random Forest. Similar F1-score (~0.92), smaller footprint.
 
-**Solution:** Added try-except blocks around each download and set `quiet=True`. Also discovered I needed `punkt_tab` for newer NLTK versions - wasn't documented anywhere.
+### NLTK Downloads Failing Silently
 
-### 4. Git LFS Files Not Downloading on Render
+Worked locally, failed on Render. No error messages, just broken predictions.
 
-Spent hours debugging why models wouldn't load. Turns out Render clones repos but doesn't automatically run `git lfs pull`. The model files existed but were just tiny LFS pointer files.
+**Fix:** Added try-except around downloads, set `quiet=True`, discovered I needed `punkt_tab` for newer NLTK versions.
 
-**Solution:** Added a `build.sh` script with explicit `git lfs pull` command, and added diagnostic code to check file sizes at startup.
+### Git LFS Files Not Actually Downloading
 
-### 5. Item-Based vs User-Based CF Decision
+Spent hours on this. Models existed but were just LFS pointer files (tiny text files instead of actual model data).
 
-Initially implemented both, but item-based CF performed poorly on our sparse matrix (most users rate only 5-10 products). The item-item similarity matrix had too many near-zero values.
+**Fix:** Added `build.sh` with explicit `git lfs pull`. Also added file size checks at startup to catch this early.
 
-**Solution:** Kept both implementations but defaulted to user-based CF which gave more diverse recommendations.
+### Item-Based CF Performed Poorly
 
-### 6. TF-IDF Feature Mismatch During Inference
+With users rating only 1-2 products on average, the item-item similarity matrix was mostly zeros.
 
-Got weird predictions in production until I realized I was creating a new TF-IDF vectorizer instead of using the one from training. The vocabulary didn't match, so features were completely wrong.
+**Fix:** Kept both implementations but defaulted to User-Based CF.
 
-**Solution:** Pickle the TF-IDF vectorizer along with the model and use the same instance for inference.
+### TF-IDF Vocabulary Mismatch
+
+Got garbage predictions until I realized I was creating a *new* TF-IDF vectorizer for inference instead of using the trained one. Different vocabulary = wrong features.
+
+**Fix:** Pickle the vectorizer alongside the model. Use the same instance everywhere.
 
 ---
 
 ## Project Structure
 
 ```
-Sentiment Based Product Recommendation System/
-├── Sentiment_Based_Product_Recommendation_System.ipynb  # Main analysis notebook
-├── model.py                    # ML model and recommendation functions
-├── app.py                      # Flask application
-├── requirements.txt            # Python dependencies
+├── Sentiment_Based_Product_Recommendation_System.ipynb  # All the analysis
+├── model.py                    # Prediction and recommendation logic
+├── app.py                      # Flask app
 ├── templates/
-│   └── index.html              # Web interface (Ebuss branded)
-├── models/                     # Trained models (generated after running notebook)
+│   └── index.html              # Frontend (Ebuss branded)
+├── models/                     # Trained models (run notebook first)
 │   ├── sentiment_model.pkl
 │   ├── tfidf_vectorizer.pkl
-│   ├── user_item_matrix.pkl
 │   ├── user_similarity.pkl
-│   ├── item_similarity.pkl
-│   ├── cleaned_data.pkl
-│   └── valid_users.pkl
+│   └── ...
 ├── data/
-│   └── sample30.csv            # Dataset
-├── Dockerfile                  # For Hugging Face Spaces
-├── Procfile                    # Heroku deployment
-├── runtime.txt                 # Python version
+│   └── sample30.csv            # ~30k reviews
+├── Dockerfile                  # For HF Spaces
+├── requirements.txt
 └── README.md
 ```
 
 ---
 
-## Installation & Setup
+## How to Run Locally
 
-### 1. Clone the repository
 ```bash
+# Clone it
 git clone https://github.com/muralik31/Capstone--SentimentBasedProductRecommendationSystem.git
 cd "Sentiment Based Product Recommendation System"
-```
 
-### 2. Create virtual environment
-```bash
+# Setup
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-### 3. Install dependencies
-```bash
+source venv/bin/activate
 pip install -r requirements.txt
-```
 
-### 4. Place dataset
-Download the `sample30.csv` dataset and place it in the `data/` folder.
-
----
-
-## Running the Analysis
-
-### Step 1: Run the Jupyter Notebook
-```bash
+# Run the notebook first (generates model files)
 jupyter notebook Sentiment_Based_Product_Recommendation_System.ipynb
-```
+# Execute all cells
 
-Execute all cells to:
-- Perform EDA and data cleaning
-- Preprocess text data
-- Train sentiment analysis models (Logistic Regression, Random Forest, XGBoost, Naive Bayes)
-- Build recommendation systems (User-based and Item-based CF)
-- Export trained models to `models/` directory
-
-### Step 2: Run the Flask Application
-```bash
+# Then run the app
 python app.py
+# Visit http://localhost:7860
 ```
-
-Visit `http://localhost:7860` in your browser.
 
 ---
 
 ## Model Performance
 
-### Sentiment Analysis Models Comparison
+| Model | F1-Score | Notes |
+|-------|----------|-------|
+| Logistic Regression | 0.93 | Best F1, but wanted ensemble |
+| **Random Forest** | 0.92 | Good balance of performance + size |
+| XGBoost | 0.92 | Too big for free tier deployment |
+| Naive Bayes | 0.90 | Fast but lower recall |
 
-| Model | Accuracy | Precision | Recall | F1-Score | ROC-AUC |
-|-------|----------|-----------|--------|----------|---------|
-| Logistic Regression | ~0.90 | ~0.92 | ~0.95 | ~0.93 | ~0.95 |
-| **Random Forest** | ~0.88 | ~0.91 | ~0.93 | ~0.92 | ~0.94 |
-| XGBoost | ~0.89 | ~0.91 | ~0.94 | ~0.92 | ~0.95 |
-| Naive Bayes | ~0.85 | ~0.88 | ~0.92 | ~0.90 | ~0.92 |
+Went with Random Forest - solid performance and actually fits in memory.
 
-*Random Forest selected for deployment (good F1-score + reasonable model size)*
+### Why User-Based CF?
 
-### Recommendation System Selection
-
-| System | Chosen | Reason |
-|--------|--------|--------|
-| **User-Based CF** | Yes | Better performance on sparse matrix, more diverse recommendations |
-| Item-Based CF | No | Item similarity matrix too sparse, recommendations less varied |
-
----
-
-## How It Works
-
-1. **User enters username** in the web interface
-2. **User-Based CF** finds 20 products from similar users that this user hasn't rated
-3. **Sentiment Analysis** scores all reviews for each of those 20 products
-4. **Top 5 products** with highest positive sentiment ratio are returned
-
-This hybrid approach ensures recommendations are not just relevant (CF) but also genuinely well-reviewed (sentiment).
+| Approach | Works? | Why |
+|----------|--------|-----|
+| **User-Based CF** | Yes | Finds similar users, gets their high-rated products |
+| Item-Based CF | Meh | Matrix too sparse, most item pairs have no common raters |
 
 ---
 
 ## API Endpoints
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | Home page with search interface |
-| `/recommend` | POST | Get recommendations for a user |
-| `/api/users` | GET | Get sample usernames |
+| Endpoint | Method | What it does |
+|----------|--------|--------------|
+| `/` | GET | The UI |
+| `/recommend` | POST | Get recommendations (send `{"username": "..."}`) |
+| `/api/users` | GET | List of valid usernames for testing |
 | `/api/health` | GET | Health check + model file info |
 
 ---
 
-## Technologies Used
+## Dataset
 
-- **Python 3.11**
-- **Pandas, NumPy** - Data manipulation
-- **Scikit-learn** - ML models (Random Forest, Logistic Regression)
-- **XGBoost** - Gradient boosting (tested, not deployed)
-- **NLTK** - NLP preprocessing
-- **Flask** - Web framework
-- **Gunicorn** - WSGI server
-- **Docker** - Containerization
-- **Hugging Face Spaces** - Cloud deployment
+~30,000 reviews across 271 products from ~25,000 users. Typical e-commerce stuff - lots of Clorox products, mostly positive reviews, most users only review 1-2 items.
 
 ---
 
@@ -213,13 +169,4 @@ ML Engineering Capstone Project
 
 ---
 
-## License
-
-This project is for educational purposes.
-
----
-
-## Acknowledgments
-
-- Dataset inspired by Kaggle e-commerce reviews
-- Built as part of ML Engineering coursework
+*Built as a learning project. The "Challenges" section above is the real documentation - that's where the learning happened.*
