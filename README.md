@@ -1,11 +1,3 @@
----
-title: Ebuss Product Recommender
-emoji: 🛒
-colorFrom: indigo
-colorTo: yellow
-sdk: docker
-app_port: 7860
----
 
 # Sentiment-Based Product Recommendation System
 
