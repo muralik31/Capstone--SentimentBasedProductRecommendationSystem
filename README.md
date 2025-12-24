@@ -34,7 +34,7 @@ Enter a username → get 5 products that similar users loved AND have good revie
 - **Python 3.11** - because 3.13 broke some dependencies
 - **Random Forest** - for sentiment classification (tried XGBoost but it was too big)
 - **TF-IDF** - converting review text to features (5000 features, unigrams + bigrams)
-- **User-Based CF** - better than item-based for our sparse matrix
+- **User-Based CF** - more interpretable than item-based (see below for why)
 - **Flask** - simple and gets the job done
 - **Docker** - for deployment on Hugging Face Spaces
 
@@ -66,11 +66,11 @@ Spent hours on this. Models existed but were just LFS pointer files (tiny text f
 
 **Fix:** Added `build.sh` with explicit `git lfs pull`. Also added file size checks at startup to catch this early.
 
-### Item-Based CF Performed Poorly
+### Item-Based CF Had Better Metrics But...
 
-With users rating only 1-2 products on average, the item-item similarity matrix was mostly zeros.
+Surprise: Item-Based CF actually had better recall (21% vs 5%) on the test set. But both had very low precision (<2%) due to the 99% matrix sparsity.
 
-**Fix:** Kept both implementations but defaulted to User-Based CF.
+**Decision:** Kept User-Based CF anyway because (1) the absolute differences are tiny, (2) sentiment filtering is the real quality gate, and (3) "shoppers like you" makes more sense to users than "similar items".
 
 ### TF-IDF Vocabulary Mismatch
 
@@ -138,10 +138,15 @@ Went with Random Forest - best F1-score and fits in memory.
 
 ### Why User-Based CF?
 
-| Approach | Works? | Why |
-|----------|--------|-----|
-| **User-Based CF** | Yes | Finds similar users, gets their high-rated products |
-| Item-Based CF | Meh | Matrix too sparse, most item pairs have no common raters |
+| Approach | Recall | Precision | Choice |
+|----------|--------|-----------|--------|
+| Item-Based CF | 21% | 1.1% | Better metrics |
+| **User-Based CF** | 5% | 0.3% | **Chose this** |
+
+Wait, why pick the "worse" one? Because:
+1. Both have <2% precision - neither is actually good at this sparsity level
+2. Sentiment filtering is the real quality gate anyway
+3. "Users like you bought..." is better UX than "similar items"
 
 ---
 
