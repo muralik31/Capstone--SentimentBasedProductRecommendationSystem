@@ -2,7 +2,7 @@
 title: Ebuss Product Recommender
 emoji: 🛒
 colorFrom: indigo
-colorTo: gold
+colorTo: yellow
 sdk: docker
 app_port: 7860
 ---
