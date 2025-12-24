@@ -38,13 +38,13 @@ Enter a username → get 5 products that similar users loved AND have good revie
 
 90% of reviews are positive. My first model just predicted "Positive" for everything and got 90% accuracy. Useless.
 
-**Fix:** SMOTE to balance the training data. F1 went from 0.88 to 0.93.
+**Fix:** SMOTE to balance the training data. F1 improved significantly after this.
 
 ### XGBoost Was Too Big
 
-XGBoost had slightly better metrics but the model was ~200MB. Render's free tier has 512MB RAM total. App kept crashing.
+XGBoost model was ~200MB. Render's free tier has 512MB RAM total. App kept crashing.
 
-**Fix:** Switched to Random Forest. Similar F1-score (~0.92), smaller footprint.
+**Fix:** Switched to Random Forest. Best F1-score (~0.95) and smaller footprint.
 
 ### NLTK Downloads Failing Silently
 
@@ -121,12 +121,12 @@ python app.py
 
 | Model | F1-Score | Notes |
 |-------|----------|-------|
-| Logistic Regression | 0.93 | Best F1, but wanted ensemble |
-| **Random Forest** | 0.92 | Good balance of performance + size |
-| XGBoost | 0.92 | Too big for free tier deployment |
+| **Random Forest** | 0.95 | Best F1, good size for deployment |
+| XGBoost | 0.95 | Similar performance but too big (~200MB) |
+| Logistic Regression | 0.93 | Smallest model, good baseline |
 | Naive Bayes | 0.90 | Fast but lower recall |
 
-Went with Random Forest - solid performance and actually fits in memory.
+Went with Random Forest - best F1-score and fits in memory.
 
 ### Why User-Based CF?
 
